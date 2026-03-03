@@ -174,9 +174,11 @@ Este script ayuda a avanzar en dos controles específicos del [AWS Security Matu
 
 Construyo herramientas de seguridad para entornos AWS reales en LATAM. Este script nació de una necesidad concreta en campo — como la mayoría de las herramientas que vale la pena usar.
 
-🔗 [LinkedIn](https://linkedin.com/in/tu-perfil)
-🔗 [Blog](https://tu-dominio.hashnode.dev)
-📝 [Post completo con contexto y hallazgos](link-al-blog)
+🔗 [LinkedIn](https://linkedin.com/in/gerardokaztro)
+
+🔗 [Blog](https://roadtocloudsec.hashnode.dev)
+
+📝 [Post completo con contexto y hallazgos](https://roadtocloudsec.hashnode.dev/encontre-access-key-2018-activa-produccion-python-boto3)
 
 ---
 
