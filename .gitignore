@@ -1,0 +1,27 @@
+# Reportes generados por el script — pueden contener información sensible
+iam_audit_report_*.csv
+cloudtrail_events_*.csv
+*.csv
+
+# Credenciales y configuración AWS
+.aws/
+credentials
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+env/
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+*.swp
