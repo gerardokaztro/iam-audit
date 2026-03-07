@@ -1,7 +1,9 @@
-# Reportes generados por el script — pueden contener información sensible
+# Output generado por el script — puede contener información sensible
+output/
+iam_audit_report_*.html
 iam_audit_report_*.csv
 cloudtrail_events_*.csv
-*.csv
+root_audit_report_*.csv
 
 # Credenciales y configuración AWS
 .aws/

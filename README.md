@@ -1,9 +1,10 @@
 # 🔍 iam-audit
 
-> Audita IAM Users y Access Keys en toda una AWS Organization multicuenta — en minutos, con mínimo privilegio.
+> Audita IAM Users, Access Keys y cuentas root en toda una AWS Organization multicuenta — en minutos, con mínimo privilegio. Dashboard HTML interactivo incluido.
 
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
 [![AWS](https://img.shields.io/badge/AWS-boto3-FF9900?style=flat&logo=amazonaws&logoColor=white)](https://boto3.amazonaws.com)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/gerardokaztro/iam-audit)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 [![Author](https://img.shields.io/badge/AWS-Security%20Hero-FF9900?style=flat&logo=amazonaws&logoColor=white)](https://aws.amazon.com/developer/community/heroes/)
 
@@ -15,8 +16,11 @@
 
 - ✅ Todas las **Access Keys** por usuario — estado, fecha de creación, último uso y servicio
 - ✅ Estado de **MFA** por usuario (Virtual, Hardware, o ausente)
-- ✅ Acceso a **consola** (login profile configurado o no)
-- ✅ Eventos de **CloudTrail** para tracking de remediación en el tiempo
+- ✅ Acceso a **consola** — login profile, último uso, rotación de password
+- ✅ **Root account** por cuenta — MFA habilitado, access keys activas, último login vía CloudTrail
+- ✅ **Risk scoring** por usuario — priorización automática de hallazgos
+- ✅ **Tendencia de remediación** vía CloudTrail — tracking de acciones correctivas en el tiempo
+- ✅ **Dashboard HTML interactivo** con filtros globales, gráficos y tabla de hallazgos
 
 Todo sin crear credenciales de largo plazo adicionales. El script usa `sts:AssumeRole` — credenciales temporales que expiran solas.
 
@@ -28,26 +32,58 @@ En entornos multicuenta, nadie tiene una vista consolidada de credenciales. Las 
 
 Este script las encuentra.
 
-> Probado en una AWS Organization real con más de 20 cuentas activas. Encontré una Access Key creada en 2018 — activa en producción. Lee el post completo → [link al blog]
+> Probado en una AWS Organization real con más de 20 cuentas activas. Encontré una Access Key creada en 2018 — activa en producción. Lee el post completo → [roadtocloudsec.hashnode.dev](https://roadtocloudsec.hashnode.dev/encontre-access-key-2018-activa-produccion-python-boto3)
 
 ---
 
-## Requisitos
+## Inicio rápido
 
-- Python 3.9+
-- boto3
-- Acceso a la cuenta de **management** de la AWS Organization
-- Un rol de auditoría desplegado en cada cuenta miembro
+### Opción A — Docker Hub (recomendado)
+
+Sin clonar el repo, sin instalar Python, sin instalar dependencias.
 
 ```bash
-pip install boto3
+docker run --rm \
+  -v ~/.aws:/root/.aws \
+  -v $(pwd)/output:/app/output \
+  -p 8000:8000 \
+  gerardokaztro/iam-audit \
+  --profile YOUR-AWS-PROFILE \
+  --role YOUR-AUDIT-ROLE
 ```
+
+Imagen disponible en: [hub.docker.com/r/gerardokaztro/iam-audit](https://hub.docker.com/r/gerardokaztro/iam-audit)
+
+### Opción B — Build local
+
+```bash
+git clone https://github.com/gerardokaztro/iam-audit
+cd iam-audit
+docker build -t iam-audit .
+docker run --rm \
+  -v ~/.aws:/root/.aws \
+  -v $(pwd)/output:/app/output \
+  -p 8000:8000 \
+  iam-audit \
+  --profile YOUR-AWS-PROFILE \
+  --role YOUR-AUDIT-ROLE
+```
+
+### Opción C — Sin Docker
+
+```bash
+pip install -r requirements.txt
+python src/iam_audit.py --profile YOUR-AWS-PROFILE --role YOUR-AUDIT-ROLE
+```
+
+Cuando el scan termina, abrí el browser en `http://localhost:8000` para ver el dashboard interactivo.
+Presiona `Ctrl+C` para detener el servidor.
 
 ---
 
 ## Configuración de permisos
 
-El principio de mínimo privilegio aplica también aquí. El rol en la cuenta de management solo necesita esto:
+El principio de mínimo privilegio aplica también aquí. El rol en la cuenta de management solo necesita:
 
 ```json
 {
@@ -81,6 +117,7 @@ El rol en cada cuenta hija necesita permisos de lectura sobre IAM y CloudTrail:
         "iam:GetAccessKeyLastUsed",
         "iam:ListMFADevices",
         "iam:GetLoginProfile",
+        "iam:GetAccountSummary",
         "cloudtrail:LookupEvents"
       ],
       "Resource": "*"
@@ -89,36 +126,20 @@ El rol en cada cuenta hija necesita permisos de lectura sobre IAM y CloudTrail:
 }
 ```
 
-> Si usás AWS Control Tower, el rol `AWSControlTowerExecution` ya existe en todas las cuentas y podés usarlo como punto de partida.
-
----
-
-## Uso
-
-```bash
-python iam_audit.py --profile <tu-perfil-mgmt> --role <nombre-del-rol>
-```
-
-**Ejemplos:**
-
-```bash
-# Con Control Tower
-python iam_audit.py --profile mgmt-profile --role AWSControlTowerExecution
-
-# Con rol de auditoría dedicado
-python iam_audit.py --profile mgmt-profile --role IAMAuditRole
-```
+> Si usas AWS Control Tower, el rol `AWSControlTowerExecution` ya existe en todas las cuentas y podés usarlo como punto de partida.
 
 ---
 
 ## Output
 
-El script genera dos archivos CSV con timestamp:
+Todos los archivos se guardan en `./output/` con timestamp:
 
 | Archivo | Contenido |
 |---|---|
-| `iam_audit_report_YYYYMMDD_HHMMSS.csv` | Hallazgos de IAM por usuario y cuenta |
-| `cloudtrail_events_YYYYMMDD_HHMMSS.csv` | Eventos IAM de CloudTrail para tracking de remediación |
+| `iam_audit_report_TIMESTAMP.html` | Dashboard interactivo con filtros, gráficos y tabla de hallazgos |
+| `iam_audit_report_TIMESTAMP.csv` | Hallazgos de IAM por usuario y cuenta |
+| `root_audit_report_TIMESTAMP.csv` | Estado de root account por cuenta |
+| `cloudtrail_events_TIMESTAMP.csv` | Eventos IAM de CloudTrail para tracking de remediación |
 
 **Campos del reporte IAM:**
 
@@ -140,31 +161,52 @@ El script genera dos archivos CSV con timestamp:
 
 ## Relación con el AWS Security Maturity Model v2
 
-Este script ayuda a avanzar en dos controles específicos del [AWS Security Maturity Model v2](https://maturitymodel.security.aws.dev/en/model/):
+Este script ayuda a avanzar en controles específicos del [AWS Security Maturity Model v2](https://maturitymodel.security.aws.dev/en/model/):
 
 | Fase | Control | Cómo ayuda este script |
 |---|---|---|
-| Phase 1 — Quick Wins | Multi-Factor Authentication | Identifica usuarios sin MFA con acceso a consola |
+| Phase 1 — Quick Wins | Multi-Factor Authentication | Identifica usuarios y cuentas root sin MFA |
 | Phase 2 — Foundational | Use Temporary Credentials | Expone usuarios con Access Keys de largo plazo activas |
+| Phase 2 — Foundational | Protect Root Credentials | Detecta root sin MFA, con AK activas y con login reciente |
 
 ---
 
 ## Limitaciones conocidas
 
-- El script audita IAM en `us-east-1` por defecto para CloudTrail — IAM es global pero los eventos de CloudTrail son regionales
+- CloudTrail se consulta en `us-east-1` por defecto — IAM es global pero los eventos son regionales
 - Cuentas donde el rol de auditoría no esté desplegado serán omitidas con un error en consola — eso en sí mismo es un hallazgo
-- No audita root account keys (próxima versión)
+- `lookup_events` retorna eventos de los últimos 90 días por limitación de la API de CloudTrail
 
 ---
 
 ## Roadmap
 
-- [ ] Detección de root account keys
-- [ ] Risk scoring por usuario (edad de key + MFA + acceso a consola)
-- [ ] Integración con AWS Security Hub (custom findings)
-- [ ] Dashboard HTML con visualización de hallazgos y tendencia de remediación
-- [ ] Alertas por Slack / email para keys de alto riesgo
-- [ ] Ejecución programada vía Lambda
+- [x] Auditoría de IAM Users y Access Keys multicuenta
+- [x] Risk scoring por usuario
+- [x] Dashboard HTML interactivo con filtros globales
+- [x] Tendencia de remediación vía CloudTrail
+- [x] Detección de root account — MFA, Access Keys, último login
+- [x] Dockerización — imagen disponible en Docker Hub
+- [ ] Notificaciones Slack / Teams con card resumen
+- [ ] Ejecución programada vía ECS Fargate + EventBridge
+- [ ] Infraestructura como código con Terraform
+
+---
+
+## Estructura del repositorio
+
+```
+iam-audit/
+├── src/
+│   ├── iam_audit.py       # Script principal
+│   └── template.html      # Template del dashboard HTML
+├── examples/
+│   └── iam_audit_report_example.csv
+├── output/                # Generado en tiempo de ejecución — en .gitignore
+├── Dockerfile
+├── requirements.txt
+└── README.md
+```
 
 ---
 
@@ -175,9 +217,7 @@ Este script ayuda a avanzar en dos controles específicos del [AWS Security Matu
 Construyo herramientas de seguridad para entornos AWS reales en LATAM. Este script nació de una necesidad concreta en campo — como la mayoría de las herramientas que vale la pena usar.
 
 🔗 [LinkedIn](https://linkedin.com/in/gerardokaztro)
-
 🔗 [Blog](https://roadtocloudsec.hashnode.dev)
-
 📝 [Post completo con contexto y hallazgos](https://roadtocloudsec.hashnode.dev/encontre-access-key-2018-activa-produccion-python-boto3)
 
 ---

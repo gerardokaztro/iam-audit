@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IAM Security Audit</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,700;0,900;1,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --katalyzt-blue: #0045BF;
+    --katalyzt-orange: #FF6C2D;
+    --katalyzt-celeste: #66CFEB;
+    --bg: #0D1B3E;
+    --surface: #1A2B52;
+    --surface2: #243566;
+    --surface3: #2D407A;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.15);
+    --text: #F0F4FF;
+    --text2: #A8B8E0;
+    --muted: #6B7FA8;
+    --crit: #FF3B3B;
+    --high: #FF8C42;
+    --med: #FFD166;
+    --low: #06D6A0;
+    --info: #66CFEB;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,69,191,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,69,191,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Top nav bar */
+  .topbar {
+    background: rgba(10,20,50,0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2.5rem;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .topbar-icon {
+    width: 26px;
+    height: 26px;
+    background: var(--katalyzt-orange);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    color: white;
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+    letter-spacing: -0.05em;
+  }
+
+  .topbar-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    color: var(--text);
+    font-size: 0.95rem;
+    letter-spacing: -0.02em;
+  }
+
+  .topbar-name span { color: var(--katalyzt-celeste); }
+
+  .topbar-divider {
+    width: 1px;
+    height: 16px;
+    background: var(--border-strong);
+    margin: 0 0.25rem;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
+
+  .topbar-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+
+  .topbar-badge {
+    background: rgba(255,108,45,0.15);
+    border: 1px solid rgba(255,108,45,0.3);
+    color: var(--katalyzt-orange);
+    font-size: 0.6rem;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.6rem;
+    border-radius: 3px;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+  .container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 2rem 2.5rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Page header */
+  .page-header {
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .page-header h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 900;
+    font-size: 2.5rem;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .page-header h1 em {
+    font-style: italic;
+    color: var(--katalyzt-celeste);
+  }
+
+  .page-header-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 0.5rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    flex-wrap: wrap;
+  }
+
+  .filter-bar-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.62rem; }
+
+  .filter-active {
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(0,69,191,0.2);
+    border: 1px solid rgba(102,207,235,0.3);
+    color: var(--katalyzt-celeste);
+    padding: 0.2rem 0.65rem;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .filter-active.visible { display: flex; }
+  .filter-clear { cursor: pointer; color: var(--muted); transition: color 0.2s; }
+  .filter-clear:hover { color: var(--crit); }
+  .filter-hint { color: var(--muted); font-size: 0.62rem; margin-left: auto; }
+
+  /* Section label */
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    margin-bottom: 0.6rem;
+    margin-top: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .section-label.root-label { color: var(--crit); }
+
+  /* KPI Grid */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.2rem 0.9rem;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .kpi:hover {
+    border-color: var(--border-strong);
+    background: var(--surface2);
+    transform: translateY(-1px);
+  }
+
+  .kpi.active {
+    border-color: var(--katalyzt-celeste);
+    background: var(--surface2);
+    box-shadow: 0 0 0 1px rgba(102,207,235,0.2), 0 4px 16px rgba(0,69,191,0.3);
+  }
+
+  .kpi.active::after {
+    content: '▼ activo';
+    position: absolute;
+    top: 0.35rem; right: 0.5rem;
+    font-size: 0.48rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--katalyzt-celeste);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; border-radius: 8px 8px 0 0; }
+  .kpi.blue::before { background: var(--katalyzt-blue); }
+  .kpi.orange::before { background: var(--katalyzt-orange); }
+  .kpi.celeste::before { background: var(--katalyzt-celeste); }
+  .kpi.crit::before { background: var(--crit); }
+  .kpi.high::before { background: var(--high); }
+  .kpi.med::before { background: var(--med); }
+  .kpi.low::before { background: var(--low); }
+  .kpi.info::before { background: var(--info); }
+
+  .kpi-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 0.55rem; font-family: 'DM Mono', monospace; }
+  .kpi-value { font-family: 'Fraunces', serif; font-size: 2.6rem; font-weight: 900; line-height: 1; letter-spacing: -0.04em; }
+
+  .kpi.blue .kpi-value { color: var(--katalyzt-celeste); }
+  .kpi.orange .kpi-value { color: var(--katalyzt-orange); }
+  .kpi.celeste .kpi-value { color: var(--katalyzt-celeste); }
+  .kpi.crit .kpi-value { color: var(--crit); }
+  .kpi.high .kpi-value { color: var(--high); }
+  .kpi.med .kpi-value { color: var(--med); }
+  .kpi.low .kpi-value { color: var(--low); }
+  .kpi.info .kpi-value { color: var(--info); }
+
+  .kpi-sub { font-size: 0.65rem; color: var(--muted); margin-top: 0.3rem; font-family: 'DM Sans', sans-serif; }
+
+  /* Charts row */
+  .charts-row { display: grid; grid-template-columns: 1.2fr 0.8fr 0.8fr; gap: 0.6rem; margin-bottom: 0.6rem; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; }
+  .card-title { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 1rem; font-family: 'DM Mono', monospace; }
+
+  .bar-chart { display: flex; flex-direction: column; gap: 0.5rem; }
+  .bar-row { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; padding: 0.2rem 0.3rem; border-radius: 4px; transition: background 0.15s; }
+  .bar-row:hover { background: var(--surface2); }
+  .bar-row.active { background: var(--surface2); outline: 1px solid rgba(102,207,235,0.3); }
+  .bar-label { font-size: 0.65rem; font-family: 'DM Mono', monospace; color: var(--text2); width: 130px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1; height: 4px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 1s cubic-bezier(0.16,1,0.3,1); }
+  .bar-count { font-size: 0.65rem; font-family: 'DM Mono', monospace; color: var(--text); width: 20px; text-align: right; flex-shrink: 0; font-weight: 500; }
+
+  .donut-wrap { display: flex; align-items: center; gap: 1.25rem; }
+  .donut-legend { display: flex; flex-direction: column; gap: 0.5rem; }
+  .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem; font-family: 'DM Sans', sans-serif; cursor: pointer; padding: 0.2rem 0.3rem; border-radius: 4px; transition: background 0.15s; }
+  .legend-item:hover { background: var(--surface2); }
+  .legend-item.active { background: var(--surface2); }
+  .legend-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+
+  .risk-meter { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 0.5rem 0; }
+  .risk-score { font-family: 'Fraunces', serif; font-size: 4.5rem; font-weight: 900; letter-spacing: -0.05em; line-height: 1; }
+  .risk-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.18em; margin-top: 0.2rem; font-family: 'DM Mono', monospace; font-weight: 500; }
+  .risk-bar-wrap { width: 100%; margin-top: 1.1rem; }
+  .risk-track { height: 4px; background: var(--surface2); border-radius: 3px; width: 100%; }
+  .risk-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--med), var(--high), var(--crit)); transition: width 1.5s cubic-bezier(0.16,1,0.3,1); }
+  .risk-factors { margin-top: 1.1rem; display: flex; flex-direction: column; gap: 0.3rem; width: 100%; }
+  .risk-factor { display: flex; justify-content: space-between; font-size: 0.65rem; font-family: 'DM Mono', monospace; color: var(--muted); padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+  .risk-factor span:last-child { color: var(--high); font-weight: 500; }
+
+  .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.6rem; overflow: hidden; }
+  .table-header { padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .table-header .card-title { margin-bottom: 0; }
+  .table-count { font-size: 0.65rem; font-family: 'DM Mono', monospace; color: var(--muted); background: var(--surface2); padding: 0.18rem 0.6rem; border-radius: 3px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); padding: 0.65rem 1.2rem; border-bottom: 1px solid var(--border); font-family: 'DM Mono', monospace; background: var(--surface2); }
+  td { padding: 0.6rem 1.2rem; font-size: 0.73rem; font-family: 'DM Mono', monospace; border-bottom: 1px solid var(--border); color: var(--text2); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  td.username { color: var(--text); font-weight: 500; font-family: 'DM Sans', sans-serif; }
+  td.account { color: var(--katalyzt-celeste); }
+
+  .tag { display: inline-block; padding: 0.12rem 0.5rem; border-radius: 3px; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-family: 'DM Mono', monospace; }
+  .tag.critical { background: rgba(255,59,59,0.12); color: var(--crit); border: 1px solid rgba(255,59,59,0.2); }
+  .tag.high { background: rgba(255,140,66,0.12); color: var(--high); border: 1px solid rgba(255,140,66,0.2); }
+  .tag.medium { background: rgba(255,209,102,0.12); color: var(--med); border: 1px solid rgba(255,209,102,0.2); }
+  .tag.active { background: rgba(255,59,59,0.1); color: var(--crit); }
+  .tag.inactive { background: rgba(255,255,255,0.05); color: var(--muted); }
+  .tag.none-mfa { background: rgba(255,59,59,0.1); color: var(--crit); }
+  .tag.virtual { background: rgba(0,69,191,0.2); color: var(--katalyzt-celeste); }
+  .tag.hardware { background: rgba(6,214,160,0.12); color: var(--low); }
+
+  .age-critical { color: var(--crit); font-weight: 600; }
+  .age-high { color: var(--high); }
+  .age-medium { color: var(--med); }
+  .age-ok { color: var(--low); }
+
+  .empty-state { padding: 3rem 1.2rem; text-align: center; color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 0.82rem; }
+
+  .search-wrap { padding: 0.6rem 1.2rem; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .search-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.76rem; padding: 0.42rem 0.75rem; outline: none; transition: border-color 0.2s; }
+  .search-input:focus { border-color: rgba(102,207,235,0.4); }
+  .search-input::placeholder { color: var(--muted); }
+
+  .root-section-card { border-color: rgba(255,59,59,0.2) !important; }
+  .root-section-card .table-header { background: rgba(255,59,59,0.04); }
+
+  footer { text-align: center; padding: 1.75rem 0; margin-top: 0.5rem; border-top: 1px solid var(--border); font-size: 0.65rem; font-family: 'DM Mono', monospace; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 1rem; }
+  footer .footer-tool { color: var(--text2); font-weight: 500; }
+
+  @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  .kpi { animation: fadeUp 0.4s ease both; }
+  .kpi:nth-child(1){animation-delay:0.03s} .kpi:nth-child(2){animation-delay:0.06s}
+  .kpi:nth-child(3){animation-delay:0.09s} .kpi:nth-child(4){animation-delay:0.12s}
+  .kpi:nth-child(5){animation-delay:0.15s} .kpi:nth-child(6){animation-delay:0.18s}
+  .kpi:nth-child(7){animation-delay:0.21s}
+  .card, .table-card { animation: fadeUp 0.5s ease both; }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="topbar-icon">IAM</div>
+      <div class="topbar-name">IAM Security <span>Audit</span></div>
+      <div class="topbar-divider"></div>
+      <span class="topbar-meta" id="topbar-meta">Cargando...</span>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-badge">&#9888; Atenci&oacute;n requerida</span>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <div class="page-header">
+      <h1>IAM Security <em>Audit</em></h1>
+      <div class="page-header-sub">AWS Organizations &middot; Multi-account IAM &amp; Credentials Audit</div>
+    </div>
+
+    <div class="filter-bar">
+      <span class="filter-bar-label">Filtro</span>
+      <div class="filter-active" id="filter-indicator">
+        <span id="filter-text"></span>
+        <span class="filter-clear" id="filter-clear">&#10005;</span>
+      </div>
+      <span id="filter-none" style="color:var(--muted);font-size:0.65rem;">Ninguno &mdash; clic en cualquier widget para filtrar</span>
+      <span class="filter-hint" id="filter-count"></span>
+    </div>
+
+    <!-- ROOT -->
+    <div class="section-label root-label">&#9888; Root Account &mdash; Hallazgos cr&iacute;ticos</div>
+    <div class="kpi-grid" style="margin-bottom:0.6rem;">
+      <div class="kpi blue" onclick="setRootFilter('all','Todas las cuentas root',this)">
+        <div class="kpi-label">Cuentas auditadas</div>
+        <div class="kpi-value" id="kpi-root-total">&mdash;</div>
+        <div class="kpi-sub">root accounts</div>
+      </div>
+      <div class="kpi crit" onclick="setRootFilter('no_mfa','Root sin MFA',this)">
+        <div class="kpi-label">Sin MFA</div>
+        <div class="kpi-value" id="kpi-root-no-mfa">&mdash;</div>
+        <div class="kpi-sub">sin segundo factor</div>
+      </div>
+      <div class="kpi high" onclick="setRootFilter('has_key','Root con Access Key',this)">
+        <div class="kpi-label">Con Access Key activa</div>
+        <div class="kpi-value" id="kpi-root-has-key">&mdash;</div>
+        <div class="kpi-sub">credencial de larga duraci&oacute;n</div>
+      </div>
+      <div class="kpi med" onclick="setRootFilter('recent_login','Root con login reciente',this)">
+        <div class="kpi-label">Con login reciente</div>
+        <div class="kpi-value" id="kpi-root-recent-login">&mdash;</div>
+        <div class="kpi-sub">registrado en CloudTrail</div>
+      </div>
+    </div>
+
+    <div class="table-card root-section-card" style="margin-bottom:1.5rem;">
+      <div class="table-header">
+        <div class="card-title" id="root-table-title">Root Account &mdash; Estado por cuenta</div>
+        <div class="table-count" id="root-table-count"></div>
+      </div>
+      <table>
+        <thead><tr><th>Cuenta</th><th>Account ID</th><th>MFA</th><th>Access Key</th><th>&Uacute;ltimo login root</th></tr></thead>
+        <tbody id="root-findings-table"></tbody>
+      </table>
+    </div>
+
+    <!-- ACCESS KEYS -->
+    <div class="section-label">Access Keys</div>
+    <div class="kpi-grid" style="margin-bottom:0.6rem;">
+      <div class="kpi blue" onclick="setFilter('all','all','Todos los hallazgos',this)">
+        <div class="kpi-label">Usuarios IAM &uacute;nicos</div>
+        <div class="kpi-value" id="kpi-total-users">&mdash;</div>
+        <div class="kpi-sub">con access keys</div>
+      </div>
+      <div class="kpi crit" onclick="setFilter('status','Active','AK Activas',this)">
+        <div class="kpi-label">AK Activas</div>
+        <div class="kpi-value" id="kpi-active">&mdash;</div>
+        <div class="kpi-sub">credenciales de larga duraci&oacute;n</div>
+      </div>
+      <div class="kpi info" onclick="setFilter('status','Inactive','AK Inactivas',this)">
+        <div class="kpi-label">AK Inactivas</div>
+        <div class="kpi-value" id="kpi-inactive">&mdash;</div>
+        <div class="kpi-sub">candidatas a eliminaci&oacute;n</div>
+      </div>
+      <div class="kpi med" onclick="setFilter('rotation','90-180','AK sin rotaci&oacute;n 90-180d',this)">
+        <div class="kpi-label">Sin rotaci&oacute;n 90&ndash;180d</div>
+        <div class="kpi-value" id="kpi-rotation-90-180">&mdash;</div>
+        <div class="kpi-sub">solo AK activas</div>
+      </div>
+      <div class="kpi high" onclick="setFilter('rotation','181-365','AK sin rotaci&oacute;n 181-365d',this)">
+        <div class="kpi-label">Sin rotaci&oacute;n 181&ndash;365d</div>
+        <div class="kpi-value" id="kpi-rotation-181-365">&mdash;</div>
+        <div class="kpi-sub">solo AK activas</div>
+      </div>
+      <div class="kpi crit" onclick="setFilter('rotation','365+','AK sin rotaci&oacute;n >365d',this)">
+        <div class="kpi-label">Sin rotaci&oacute;n &gt;365d</div>
+        <div class="kpi-value" id="kpi-rotation-over365">&mdash;</div>
+        <div class="kpi-sub">cr&iacute;tico</div>
+      </div>
+      <div class="kpi crit" onclick="setFilter('mfa_status','None','Sin MFA',this)">
+        <div class="kpi-label">Sin MFA</div>
+        <div class="kpi-value" id="kpi-no-mfa">&mdash;</div>
+        <div class="kpi-sub">sin segundo factor</div>
+      </div>
+    </div>
+
+    <!-- CONSOLA -->
+    <div class="section-label">Acceso consola</div>
+    <div class="kpi-grid" style="margin-bottom:0.6rem;">
+      <div class="kpi blue" onclick="setFilter('password_status','Configurada','Con password habilitado',this)">
+        <div class="kpi-label">Con password habilitado</div>
+        <div class="kpi-value" id="kpi-console">&mdash;</div>
+        <div class="kpi-sub">con o sin login previo</div>
+      </div>
+      <div class="kpi high" onclick="setFilter('console_never','true','Password habilitado sin login',this)">
+        <div class="kpi-label">Password sin login</div>
+        <div class="kpi-value" id="kpi-console-never">&mdash;</div>
+        <div class="kpi-sub">nunca iniciaron sesi&oacute;n</div>
+      </div>
+      <div class="kpi crit" onclick="setFilter('pwd_no_rotation','true','Password sin rotaci&oacute;n >90d',this)">
+        <div class="kpi-label">Password sin rotaci&oacute;n &gt;90d</div>
+        <div class="kpi-value" id="kpi-pwd-no-rotation">&mdash;</div>
+        <div class="kpi-sub">+90 d&iacute;as sin cambiar</div>
+      </div>
+    </div>
+
+    <!-- COBERTURA -->
+    <div class="section-label">Cobertura</div>
+    <div class="kpi-grid" style="margin-bottom:1.5rem;">
+      <div class="kpi low">
+        <div class="kpi-label">Cuentas auditadas</div>
+        <div class="kpi-value" id="kpi-accounts-ok">&mdash;</div>
+        <div class="kpi-sub" id="kpi-accounts-sub">de &mdash; en la org</div>
+      </div>
+      <div class="kpi high">
+        <div class="kpi-label">Cuentas con error</div>
+        <div class="kpi-value" id="kpi-accounts-fail">2</div>
+        <div class="kpi-sub">sin rol de acceso</div>
+      </div>
+      <div class="kpi crit" onclick="setFilter('never_used','true','AK nunca utilizadas',this)">
+        <div class="kpi-label">AK nunca utilizadas</div>
+        <div class="kpi-value" id="kpi-never-used">&mdash;</div>
+        <div class="kpi-sub">activas sin uso</div>
+      </div>
+      <div class="kpi low" onclick="setFilter('rotated_ok','true','AK rotadas recientemente',this)">
+        <div class="kpi-label">AK rotadas recientemente</div>
+        <div class="kpi-value" id="kpi-rotated-ok">&mdash;</div>
+        <div class="kpi-sub">menos de 90d</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+      <div class="card">
+        <div class="card-title">Access Keys por cuenta</div>
+        <div class="bar-chart" id="bar-chart"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Estado MFA</div>
+        <div class="donut-wrap">
+          <svg width="90" height="90" viewBox="0 0 100 100" id="donut-svg">
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#243566" stroke-width="14"/>
+          </svg>
+          <div class="donut-legend" id="donut-legend"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Score de riesgo IAM</div>
+        <div class="risk-meter">
+          <div class="risk-score" id="risk-score">&mdash;</div>
+          <div class="risk-label" id="risk-label">calculando...</div>
+          <div class="risk-bar-wrap"><div class="risk-track"><div class="risk-fill" id="risk-fill" style="width:0%"></div></div></div>
+          <div class="risk-factors" id="risk-factors"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trend -->
+    <div class="table-card" style="margin-bottom:0.6rem;">
+      <div class="table-header">
+        <div class="card-title">Tendencia de remediaci&oacute;n</div>
+        <div class="table-count" id="trend-summary"></div>
+      </div>
+      <div style="padding:1.2rem;">
+        <canvas id="trend-chart" height="80"></canvas>
+      </div>
+      <div style="padding:0 1.2rem 0.9rem;display:flex;gap:1.5rem;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.62rem;font-family:'DM Mono',monospace;color:var(--muted);"><div style="width:10px;height:2px;background:var(--crit);border-radius:2px"></div> AK activas</div>
+        <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.62rem;font-family:'DM Mono',monospace;color:var(--muted);"><div style="width:10px;height:2px;background:var(--low);border-radius:2px"></div> AK eliminadas</div>
+        <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.62rem;font-family:'DM Mono',monospace;color:var(--muted);"><div style="width:10px;height:2px;background:var(--katalyzt-celeste);border-radius:2px"></div> Usuarios eliminados</div>
+      </div>
+      <div style="border-top:1px solid var(--border);">
+        <table>
+          <thead><tr><th>Fecha</th><th>Evento</th><th>Recurso</th><th>Cuenta</th><th>Ejecutado por</th></tr></thead>
+          <tbody id="remediation-table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Findings -->
+    <div class="table-card">
+      <div class="table-header">
+        <div class="card-title" id="table-title">Hallazgos &mdash; AK activas con mayor antig&uuml;edad</div>
+        <div class="table-count" id="table-count"></div>
+      </div>
+      <div class="search-wrap">
+        <input class="search-input" id="search-input" type="text" placeholder="Buscar por usuario, cuenta, servicio, key ID...">
+      </div>
+      <table>
+        <thead><tr><th>Usuario</th><th>Cuenta</th><th>Access Key ID</th><th>Estado</th><th>Antig&uuml;edad</th><th>&Uacute;ltimo uso</th><th>Servicio</th><th>MFA</th><th>Prioridad</th></tr></thead>
+        <tbody id="findings-table"></tbody>
+      </table>
+    </div>
+
+    <footer>
+      <span class="footer-tool">iam_audit.py</span>
+      <span style="color:var(--border-strong)">&middot;</span>
+      <span>AWS Security Maturity Model &mdash; Use Temporary Credentials</span>
+    </footer>
+
+  </div>
+
+<script>
+const RAW = `%%IAM_DATA%%`;
+const CT_RAW = `%%CT_DATA%%`;
+const ROOT_RAW = `%%ROOT_DATA%%`;
+
+let activeFilter = { type: null, value: null, label: null };
+let activeRootFilter = { type: null, label: null };
+let searchQuery = '';
+
+function parseCSV(raw) {
+  if (!raw || !raw.trim()) return [];
+  const lines = raw.trim().split('\n');
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const vals = []; let cur = '', inQ = false;
+    for (let ch of line) { if (ch === '"') inQ = !inQ; else if (ch === ',' && !inQ) { vals.push(cur); cur = ''; } else cur += ch; }
+    vals.push(cur);
+    const obj = {}; headers.forEach((h, i) => obj[h.trim()] = (vals[i] || '').trim()); return obj;
+  });
+}
+
+function daysSince(dateStr) {
+  if (!dateStr || ['Nunca','Nunca utilizada','N/A',''].includes(dateStr)) return null;
+  const d = new Date(dateStr.replace('+00:00','Z').replace(/-05:00/,''));
+  return Math.floor((new Date() - d) / 86400000);
+}
+
+function ageClass(days) {
+  if (days === null) return '';
+  if (days > 365) return 'age-critical';
+  if (days > 180) return 'age-high';
+  if (days > 90) return 'age-medium';
+  return 'age-ok';
+}
+
+function priority(row, ageDays) {
+  if (row.status === 'Active' && ageDays > 365) return { label: 'CRITICO', cls: 'critical' };
+  if (row.status === 'Active' && ageDays > 180) return { label: 'ALTO', cls: 'high' };
+  if (row.status === 'Active' && ageDays > 90) return { label: 'MEDIO', cls: 'medium' };
+  if (row.status === 'Active') return { label: 'BAJO', cls: '' };
+  return { label: 'INACTIVA', cls: 'inactive' };
+}
+
+function applyFilter(data) {
+  const f = activeFilter;
+  if (!f.type || f.type === 'all') return data;
+  return data.filter(r => {
+    const age = daysSince(r.created_date);
+    switch (f.type) {
+      case 'status': return r.status === f.value;
+      case 'rotation':
+        if (r.status !== 'Active') return false;
+        if (f.value === '90-180') return age >= 90 && age <= 180;
+        if (f.value === '181-365') return age >= 181 && age <= 365;
+        if (f.value === '365+') return age > 365;
+        return false;
+      case 'mfa_status': return r.mfa_status === f.value;
+      case 'mfa_value': return r.mfa_status === f.value;
+      case 'password_status': return r.password_status === f.value;
+      case 'console_never': return r.password_status === 'Configurada' && (r.password_last_used === 'Nunca' || !r.password_last_used);
+      case 'pwd_no_rotation': { if (r.password_status !== 'Configurada') return false; const d = daysSince(r.password_last_used); return d !== null && d > 90; }
+      case 'never_used': return r.status === 'Active' && ['Nunca utilizada','N/A','Nunca'].includes(r.last_used_date);
+      case 'rotated_ok': return r.status === 'Active' && age !== null && age < 90;
+      case 'account_name': return r.account_name === f.value;
+      default: return true;
+    }
+  });
+}
+
+function applySearch(data) {
+  if (!searchQuery) return data;
+  const q = searchQuery.toLowerCase();
+  return data.filter(r => r.username.toLowerCase().includes(q) || r.account_name.toLowerCase().includes(q) || r.service_name.toLowerCase().includes(q) || r.access_key_id.toLowerCase().includes(q));
+}
+
+function setFilter(type, value, label, el) {
+  if (activeFilter.type === type && activeFilter.value === value) { clearFilter(); return; }
+  activeFilter = { type, value, label };
+  document.querySelectorAll('.kpi.active, .bar-row.active, .legend-item.active').forEach(k => k.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('filter-indicator').classList.add('visible');
+  document.getElementById('filter-text').textContent = label;
+  document.getElementById('filter-none').style.display = 'none';
+  renderAll();
+}
+
+function clearFilter() {
+  activeFilter = { type: null, value: null, label: null };
+  document.querySelectorAll('.kpi.active, .bar-row.active, .legend-item.active').forEach(k => k.classList.remove('active'));
+  document.getElementById('filter-indicator').classList.remove('visible');
+  document.getElementById('filter-none').style.display = '';
+  document.getElementById('filter-count').textContent = '';
+  renderAll();
+}
+
+function setRootFilter(type, label, el) {
+  if (activeRootFilter.type === type) { activeRootFilter = { type: null, label: null }; document.querySelectorAll('.kpi.active').forEach(k => k.classList.remove('active')); renderRoot(parseCSV(ROOT_RAW)); return; }
+  activeRootFilter = { type, label };
+  document.querySelectorAll('.kpi.active').forEach(k => k.classList.remove('active'));
+  if (el) el.classList.add('active');
+  renderRoot(parseCSV(ROOT_RAW));
+}
+
+document.getElementById('filter-clear').onclick = clearFilter;
+document.getElementById('search-input').oninput = function() { searchQuery = this.value; renderTable(applySearch(applyFilter(parseCSV(RAW)))); };
+
+function renderAll() {
+  const all = parseCSV(RAW);
+  const filtered = applyFilter(all);
+  renderKPIs(filtered, all);
+  renderBarChart(filtered);
+  renderDonut(filtered);
+  renderRiskScore(filtered);
+  renderTable(applySearch(filtered));
+  renderTrend(filtered);
+}
+
+function renderKPIs(data, allData) {
+  const users = [...new Set(data.map(r => r.username))];
+  const active = data.filter(r => r.status === 'Active');
+  const inactive = data.filter(r => r.status === 'Inactive');
+  const r90 = active.filter(r => { const d = daysSince(r.created_date); return d !== null && d >= 90 && d <= 180; });
+  const r181 = active.filter(r => { const d = daysSince(r.created_date); return d !== null && d >= 181 && d <= 365; });
+  const r365 = active.filter(r => { const d = daysSince(r.created_date); return d !== null && d > 365; });
+  const noMfa = [...new Set(data.filter(r => r.mfa_status === 'None').map(r => r.username))];
+  const console_ = [...new Set(data.filter(r => r.password_status === 'Configurada').map(r => r.username))];
+  const consoleNever = [...new Set(data.filter(r => r.password_status === 'Configurada' && (r.password_last_used === 'Nunca' || !r.password_last_used)).map(r => r.username))];
+  const pwdNo = [...new Set(data.filter(r => { if (r.password_status !== 'Configurada') return false; const d = daysSince(r.password_last_used); return d !== null && d > 90; }).map(r => r.username))];
+  const neverUsed = active.filter(r => ['Nunca utilizada','N/A','Nunca'].includes(r.last_used_date));
+  const rotatedOk = active.filter(r => { const d = daysSince(r.created_date); return d !== null && d < 90; });
+
+  document.getElementById('kpi-total-users').textContent = users.length;
+  document.getElementById('kpi-active').textContent = active.length;
+  document.getElementById('kpi-inactive').textContent = inactive.length;
+  document.getElementById('kpi-rotation-90-180').textContent = r90.length;
+  document.getElementById('kpi-rotation-181-365').textContent = r181.length;
+  document.getElementById('kpi-rotation-over365').textContent = r365.length;
+  document.getElementById('kpi-no-mfa').textContent = noMfa.length;
+  document.getElementById('kpi-console').textContent = console_.length;
+  document.getElementById('kpi-console-never').textContent = consoleNever.length;
+  document.getElementById('kpi-pwd-no-rotation').textContent = pwdNo.length;
+  document.getElementById('kpi-never-used').textContent = neverUsed.length;
+  document.getElementById('kpi-rotated-ok').textContent = rotatedOk.length;
+
+  const totalAudited = [...new Set(allData.map(r => r.account_id))].length;
+  document.getElementById('kpi-accounts-ok').textContent = totalAudited;
+  document.getElementById('kpi-accounts-sub').textContent = 'de ' + (totalAudited + 2) + ' en la org';
+  if (activeFilter.type) document.getElementById('filter-count').textContent = data.length + ' registros · ' + users.length + ' usuarios';
+}
+
+function renderBarChart(data) {
+  const perAccount = {};
+  data.forEach(r => { const key = r.account_name; if (!perAccount[key]) perAccount[key] = { name: key.length > 22 ? key.substring(0,22)+'...' : key, count: 0, full: key }; perAccount[key].count++; });
+  const sorted = Object.values(perAccount).sort((a,b) => b.count - a.count).slice(0,8);
+  const maxCount = sorted.length ? sorted[0].count : 1;
+  const colors = ['#FF6C2D','#FF8A55','#FFA07A','#66CFEB','#4DB8D8','#0045BF','#2E6EE8','#5590FF'];
+  const bc = document.getElementById('bar-chart'); bc.innerHTML = '';
+  if (!sorted.length) { bc.innerHTML = '<div class="empty-state">Sin datos para este filtro</div>'; return; }
+  sorted.forEach(({ name, count, full }, i) => {
+    const pct = (count / maxCount * 100).toFixed(1);
+    const isActive = activeFilter.type === 'account_name' && activeFilter.value === full;
+    const row = document.createElement('div');
+    row.className = 'bar-row' + (isActive ? ' active' : '');
+    row.innerHTML = '<div class="bar-label" title="' + full + '">' + name + '</div><div class="bar-track"><div class="bar-fill" style="width:0%;background:' + colors[i] + '" data-w="' + pct + '"></div></div><div class="bar-count">' + count + '</div>';
+    row.onclick = () => { if (isActive) { clearFilter(); return; } setFilter('account_name', full, 'Cuenta: ' + name, row); };
+    bc.appendChild(row);
+  });
+  setTimeout(() => { document.querySelectorAll('.bar-fill').forEach(el => { el.style.width = el.dataset.w + '%'; }); }, 50);
+}
+
+function renderDonut(data) {
+  const users = [...new Set(data.map(r => r.username))];
+  const total = users.length || 1;
+  const none = [...new Set(data.filter(r => r.mfa_status === 'None').map(r => r.username))].length;
+  const virt = [...new Set(data.filter(r => r.mfa_status === 'Virtual').map(r => r.username))].length;
+  const hard = [...new Set(data.filter(r => r.mfa_status === 'Hardware').map(r => r.username))].length;
+  const segs = [{ label:'Sin MFA', value:none, color:'#FF3B3B', mfa:'None' }, { label:'Virtual', value:virt, color:'#66CFEB', mfa:'Virtual' }, { label:'Hardware', value:hard, color:'#06D6A0', mfa:'Hardware' }].filter(s => s.value > 0);
+  const r = 38, circ = 2 * Math.PI * r; let offset = 0;
+  let svg = '<circle cx="50" cy="50" r="38" fill="none" stroke="#243566" stroke-width="14"/>';
+  segs.forEach(seg => { const pct = seg.value/total, dash = pct*circ, gap = circ-dash; svg += '<circle cx="50" cy="50" r="' + r + '" fill="none" stroke="' + seg.color + '" stroke-width="14" stroke-dasharray="' + dash.toFixed(2) + ' ' + gap.toFixed(2) + '" stroke-dashoffset="' + (-offset*circ/(2*Math.PI*r)*circ+circ/4).toFixed(2) + '" transform="rotate(-90 50 50)"/>'; offset += pct*2*Math.PI*r; });
+  document.getElementById('donut-svg').innerHTML = svg;
+  const leg = document.getElementById('donut-legend'); leg.innerHTML = '';
+  segs.forEach(seg => {
+    const isActive = activeFilter.type === 'mfa_value' && activeFilter.value === seg.mfa;
+    const item = document.createElement('div');
+    item.className = 'legend-item' + (isActive ? ' active' : '');
+    item.innerHTML = '<div class="legend-dot" style="background:' + seg.color + '"></div>' + seg.label + ' <strong style="margin-left:4px;color:var(--text)">' + seg.value + '</strong>';
+    item.onclick = () => { if (isActive) { clearFilter(); return; } setFilter('mfa_value', seg.mfa, 'MFA: ' + seg.label, item); };
+    leg.appendChild(item);
+  });
+}
+
+function renderRiskScore(data) {
+  const active = data.filter(r => r.status === 'Active');
+  const inactive = data.filter(r => r.status === 'Inactive');
+  const r90 = active.filter(r => { const d = daysSince(r.created_date); return d !== null && d >= 90 && d <= 180; });
+  const r181 = active.filter(r => { const d = daysSince(r.created_date); return d !== null && d >= 181 && d <= 365; });
+  const r365 = active.filter(r => { const d = daysSince(r.created_date); return d !== null && d > 365; });
+  const noMfa = [...new Set(data.filter(r => r.mfa_status === 'None').map(r => r.username))];
+  const consoleNever = [...new Set(data.filter(r => r.password_status === 'Configurada' && (r.password_last_used === 'Nunca' || !r.password_last_used)).map(r => r.username))];
+  let score = Math.min(r365.length*8 + r181.length*4 + r90.length*2 + noMfa.length*5 + consoleNever.length*3 + inactive.length*1, 100);
+  const label = score >= 80 ? 'CRITICO' : score >= 60 ? 'ALTO' : score >= 40 ? 'MEDIO' : 'BAJO';
+  const color = score >= 80 ? 'var(--crit)' : score >= 60 ? 'var(--high)' : score >= 40 ? 'var(--med)' : 'var(--low)';
+  document.getElementById('risk-score').textContent = score;
+  document.getElementById('risk-score').style.color = color;
+  document.getElementById('risk-label').textContent = label;
+  document.getElementById('risk-label').style.color = color;
+  document.getElementById('risk-factors').innerHTML = '<div class="risk-factor"><span>AK activas &gt;365d</span><span>' + r365.length + ' &times; 8pts</span></div><div class="risk-factor"><span>AK activas 181&ndash;365d</span><span>' + r181.length + ' &times; 4pts</span></div><div class="risk-factor"><span>AK activas 90&ndash;180d</span><span>' + r90.length + ' &times; 2pts</span></div><div class="risk-factor"><span>Sin MFA</span><span>' + noMfa.length + ' &times; 5pts</span></div><div class="risk-factor"><span>Password sin login</span><span>' + consoleNever.length + ' &times; 3pts</span></div><div class="risk-factor"><span>AK inactivas</span><span>' + inactive.length + ' &times; 1pt</span></div>';
+  setTimeout(() => { document.getElementById('risk-fill').style.width = score + '%'; }, 300);
+}
+
+function renderTable(data) {
+  const sorted = data.map(r => ({ ...r, ageDays: daysSince(r.created_date) })).sort((a,b) => (b.ageDays||0)-(a.ageDays||0));
+  document.getElementById('table-title').textContent = 'Hallazgos — ' + (activeFilter.label || 'Todos');
+  document.getElementById('table-count').textContent = sorted.length + ' registros';
+  const tbody = document.getElementById('findings-table'); tbody.innerHTML = '';
+  if (!sorted.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Sin hallazgos para este filtro</td></tr>'; return; }
+  sorted.forEach(r => {
+    const p = priority(r, r.ageDays);
+    const shortAcc = r.account_name.length > 24 ? r.account_name.substring(0,24)+'...' : r.account_name;
+    const shortKey = r.access_key_id ? r.access_key_id.substring(0,8)+'...' : '-';
+    const mfaTag = r.mfa_status === 'None' ? '<span class="tag none-mfa">Sin MFA</span>' : r.mfa_status === 'Virtual' ? '<span class="tag virtual">Virtual</span>' : '<span class="tag hardware">Hardware</span>';
+    const statusTag = r.status === 'Active' ? '<span class="tag active">Active</span>' : '<span class="tag inactive">Inactive</span>';
+    tbody.innerHTML += '<tr><td class="username">' + r.username + '</td><td class="account" style="cursor:pointer" onclick="setFilter(\'account_name\',\'' + r.account_name.replace(/'/g,"\\'") + '\',\'Cuenta: ' + shortAcc.replace(/'/g,"\\'") + '\',null)">' + shortAcc + '</td><td>' + shortKey + '</td><td>' + statusTag + '</td><td class="' + ageClass(r.ageDays) + '">' + (r.ageDays !== null ? r.ageDays+'d' : '-') + '</td><td>' + (['Nunca utilizada','N/A','Nunca'].includes(r.last_used_date) ? '<span style="color:var(--muted)">Nunca</span>' : (r.last_used_date||'-').split(' ')[0]) + '</td><td>' + (r.service_name||'-') + '</td><td>' + mfaTag + '</td><td><span class="tag ' + p.cls + '">' + p.label + '</span></td></tr>';
+  });
+}
+
+function renderRoot(data) {
+  const noMfa = data.filter(r => r.mfa_enabled === 'False');
+  const hasKey = data.filter(r => r.access_key_present === 'True');
+  const recentLogin = data.filter(r => r.root_last_login !== 'Pendiente' && r.root_last_login !== 'Nunca');
+  document.getElementById('kpi-root-total').textContent = data.length;
+  document.getElementById('kpi-root-no-mfa').textContent = noMfa.length;
+  document.getElementById('kpi-root-has-key').textContent = hasKey.length;
+  document.getElementById('kpi-root-recent-login').textContent = recentLogin.length;
+  let filtered = data;
+  if (activeRootFilter.type === 'no_mfa') filtered = noMfa;
+  else if (activeRootFilter.type === 'has_key') filtered = hasKey;
+  else if (activeRootFilter.type === 'recent_login') filtered = recentLogin;
+  document.getElementById('root-table-title').textContent = 'Root Account — ' + (activeRootFilter.label || 'Estado por cuenta');
+  document.getElementById('root-table-count').textContent = filtered.length + ' cuentas';
+  const tbody = document.getElementById('root-findings-table'); tbody.innerHTML = '';
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Sin hallazgos para este filtro</td></tr>'; return; }
+  filtered.forEach(r => {
+    const mfaTag = r.mfa_enabled === 'True' ? '<span class="tag hardware">&#10003; Habilitado</span>' : '<span class="tag critical">&#10007; Sin MFA</span>';
+    const keyTag = r.access_key_present === 'True' ? '<span class="tag critical">&#9888; Activa</span>' : '<span class="tag hardware">&#10003; Sin keys</span>';
+    const loginTag = r.root_last_login === 'Pendiente' || r.root_last_login === 'Nunca' ? '<span style="color:var(--muted)">' + r.root_last_login + '</span>' : '<span class="tag high">' + r.root_last_login + '</span>';
+    const shortAcc = r.account_name.length > 32 ? r.account_name.substring(0,32)+'...' : r.account_name;
+    tbody.innerHTML += '<tr><td class="username">' + shortAcc + '</td><td style="color:var(--muted)">' + r.account_id + '</td><td>' + mfaTag + '</td><td>' + keyTag + '</td><td>' + loginTag + '</td></tr>';
+  });
+}
+
+function renderTrend(filteredData) {
+  const ctData = parseCSV(CT_RAW);
+  const accountFilter = activeFilter.type === 'account_name' ? activeFilter.value : null;
+  const ct = accountFilter ? ctData.filter(e => e.account_name === accountFilter) : ctData;
+  const allDates = ctData.map(e => e.eventTime ? e.eventTime.split(' ')[0] : '').filter(Boolean).sort();
+  if (!allDates.length) return;
+  const startDate = new Date(allDates[0]), endDate = new Date();
+  const days = [], labels = []; let d = new Date(startDate);
+  while (d <= endDate) { days.push(d.toISOString().split('T')[0]); labels.push(d.toLocaleDateString('es',{month:'short',day:'numeric'})); d = new Date(d.getTime()+86400000); }
+  const delAK = {}, delU = {}; days.forEach(day => { delAK[day] = 0; delU[day] = 0; });
+  ct.forEach(ev => { const day = ev.eventTime ? ev.eventTime.split(' ')[0] : ''; if (days.includes(day)) { if (ev.eventName === 'DeleteAccessKey') delAK[day]++; if (ev.eventName === 'DeleteUser') delU[day]++; } });
+  let cumAK = 0, cumU = 0;
+  const cumAKData = days.map(day => { cumAK += delAK[day]; return cumAK; });
+  const cumUData = days.map(day => { cumU += delU[day]; return cumU; });
+  const baseline = filteredData.filter(r => r.status === 'Active').length + cumAK;
+  const remaining = cumAKData.map(c => baseline - c);
+  document.getElementById('trend-summary').textContent = cumAK + ' AK eliminadas · ' + cumU + ' usuarios eliminados' + (accountFilter ? ' · filtrado' : '');
+  const canvas = document.getElementById('trend-chart');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.parentElement.clientWidth - 48; canvas.height = 160;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const W = canvas.width, H = canvas.height, pad = {top:20,right:20,bottom:30,left:40};
+  const cW = W-pad.left-pad.right, cH = H-pad.top-pad.bottom, n = days.length;
+  const maxVal = Math.max(...remaining,...cumAKData,...cumUData,1)*1.1;
+  const xP = i => pad.left+(i/(n-1))*cW, yP = v => pad.top+cH-(v/maxVal)*cH;
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+  for (let i=0;i<=4;i++) { const y=pad.top+(i/4)*cH; ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(W-pad.right,y); ctx.stroke(); ctx.fillStyle='#6B7FA8'; ctx.font='10px DM Mono,monospace'; ctx.textAlign='right'; ctx.fillText(Math.round(maxVal*(1-i/4)),pad.left-6,y+4); }
+  ctx.fillStyle='#6B7FA8'; ctx.font='9px DM Mono,monospace'; ctx.textAlign='center';
+  labels.forEach((l,i) => { if(i%3===0) ctx.fillText(l,xP(i),H-6); });
+  const drawLine = (data,color,dashed=false) => { ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.setLineDash(dashed?[4,4]:[]); data.forEach((v,i) => i===0?ctx.moveTo(xP(i),yP(v)):ctx.lineTo(xP(i),yP(v))); ctx.stroke(); ctx.setLineDash([]); };
+  const drawArea = (data,color) => { ctx.beginPath(); data.forEach((v,i) => i===0?ctx.moveTo(xP(i),yP(v)):ctx.lineTo(xP(i),yP(v))); ctx.lineTo(xP(n-1),yP(0)); ctx.lineTo(xP(0),yP(0)); ctx.closePath(); ctx.fillStyle=color; ctx.fill(); };
+  drawArea(remaining,'rgba(255,59,59,0.08)'); drawArea(cumAKData,'rgba(6,214,160,0.06)');
+  drawLine(remaining,'#FF3B3B'); drawLine(cumAKData,'#06D6A0'); drawLine(cumUData,'#66CFEB',true);
+  days.forEach((day,i) => { if(delAK[day]>0||delU[day]>0) { ctx.beginPath(); ctx.arc(xP(i),yP(remaining[i]),4,0,Math.PI*2); ctx.fillStyle='#FF3B3B'; ctx.fill(); } });
+  const sortedCT = [...ct].filter(e => e.eventName && e.eventName.startsWith('Delete')).sort((a,b) => new Date(b.eventTime)-new Date(a.eventTime));
+  const tbody = document.getElementById('remediation-table'); tbody.innerHTML = '';
+  sortedCT.forEach(ev => {
+    const tag = ev.eventName==='DeleteUser'?'<span class="tag critical">Usuario</span>':ev.eventName==='DeleteAccessKey'?'<span class="tag high">AccessKey</span>':'<span class="tag medium">Password</span>';
+    const parts = (ev.resources||'').split(','); const res = parts[parts.length>1?1:0].trim();
+    const acc = ev.account_name.length>26?ev.account_name.substring(0,26)+'...':ev.account_name;
+    tbody.innerHTML += '<tr><td>' + (ev.eventTime||'').split(' ')[0] + '</td><td>' + tag + '</td><td class="username">' + res + '</td><td class="account">' + acc + '</td><td style="color:var(--muted)">' + (ev.username||'-') + '</td></tr>';
+  });
+}
+
+function renderHeader() {
+  const data = parseCSV(RAW);
+  const rootData = parseCSV(ROOT_RAW);
+  const totalAudited = rootData.length > 0 ? rootData.length : [...new Set(data.map(r => r.account_id))].length;
+  const now = new Date().toLocaleDateString('es',{year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('topbar-meta').textContent = totalAudited + ' cuentas auditadas · ' + now;
+}
+
+renderHeader();
+renderRoot(parseCSV(ROOT_RAW));
+renderAll();
+</script>
+</body>
+</html>
