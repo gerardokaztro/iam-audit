@@ -9,8 +9,86 @@ import http.server
 import socketserver
 import webbrowser
 import sys
+import requests
+
+S3_BUCKET = os.environ.get("S3_BUCKET")
+SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL")
+AWS_REGION = os.environ.get("AWS_DEFAULT_REGION")
 
 # Este script audita IAM Users con Access Keys activas en una o múltiples cuentas AWS
+
+def upload_to_s3(local_path, s3_key):
+    """Sube un archivo local al bucket S3 de reportes"""
+    bucket = os.environ.get("S3_BUCKET")
+    region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    
+    s3 = boto3.client("s3", region_name=region)
+    s3.upload_file(local_path, bucket, s3_key)
+    print(f"[S3] Subido: s3://{bucket}/{s3_key}")
+    return bucket, s3_key
+
+def generate_presigned_url(bucket, s3_key, expiration=172800):
+    """Genera una presigned URL válida por 48 horas (172800 segundos)"""
+    region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    s3 = boto3.client("s3", region_name=region)
+    
+    url = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": s3_key},
+        ExpiresIn=expiration
+    )
+    print(f"[S3] Presigned URL generada — válida 48hs")
+    return url
+
+def notify_slack(presigned_url, findings_count, accounts_count, high_risk_count):
+    """Envía notificación a Slack con resumen y URL del dashboard"""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print("[Slack] SLACK_WEBHOOK_URL no definida — omitiendo notificación")
+        return
+
+    payload = {
+        "blocks": [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "🔍 IAM Security Audit — Reporte semanal listo"
+                }
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*Cuentas auditadas:*\n{accounts_count}"},
+                    {"type": "mrkdwn", "text": f"*Access Keys encontradas:*\n{findings_count}"},
+                    {"type": "mrkdwn", "text": f"*Hallazgos de alto riesgo:*\n{high_risk_count}"}
+                ]
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "📊 Ver dashboard"},
+                        "url": presigned_url,
+                        "style": "primary"
+                    }
+                ]
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": "⏱ URL válida por 48 horas"}
+                ]
+            }
+        ]
+    }
+
+    response = requests.post(webhook_url, json=payload)
+    if response.status_code == 200:
+        print("[Slack] Notificación enviada correctamente")
+    else:
+        print(f"[Slack] Error al enviar notificación: {response.status_code}")
 
 def get_accounts(org_client):
     """Retorna lista de todas las cuentas activas en la organización"""
@@ -133,8 +211,10 @@ def get_cloudtrail_events(session, accounts, role_name):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='IAM Security Audit Tool')
-    parser.add_argument('--profile', required=True, help='AWS CLI profile name')
-    parser.add_argument('--role', required=True, help='Role name to assume in each account')
+    parser.add_argument('--profile', required=False, help='AWS CLI profile name (local only)')
+    parser.add_argument('--role', required=False, 
+                        default=os.environ.get("AUDIT_ROLE_NAME", "AWSControlTowerExecution"),
+                        help='Role name to assume in each account')
     return parser.parse_args()
 
 def get_root_findings(iam_client, account_id, account_name):
@@ -158,14 +238,37 @@ def get_root_findings(iam_client, account_id, account_name):
 def main():
     """Función principal que orquesta la auditoría"""
     args = parse_args()
-    session = boto3.Session(profile_name=args.profile)
-    org_client = session.client('organizations')
+
+    # Local: usa profile. Fargate: boto3 usa el Task Role automáticamente
+    if args.profile:
+        session = boto3.Session(profile_name=args.profile)
+    else:
+        session = boto3.Session()
+
+    # En Fargate, asumir rol en Management para listar cuentas
+    mgmt_account_id = os.environ.get("MANAGEMENT_ACCOUNT_ID")
+    if mgmt_account_id:
+        credentials = assume_role(
+            session,
+            mgmt_account_id,
+            "iam-audit-org-reader",
+            "OrgReader"
+        )
+        org_session = boto3.Session(
+            aws_access_key_id=credentials['AccessKeyId'],
+            aws_secret_access_key=credentials['SecretAccessKey'],
+            aws_session_token=credentials['SessionToken']
+        )
+        org_client = org_session.client('organizations')
+    else:
+        org_client = session.client('organizations')
+
     accounts = get_accounts(org_client)
     
     all_findings = []
 
     cloudtrail_events = get_cloudtrail_events(
-        session,
+        org_session if mgmt_account_id else session,
         accounts,
         args.role
     )
@@ -175,7 +278,12 @@ def main():
     for account in accounts:
         print(f"Auditando cuenta: {account['name']} ({account['id']})")
         try:
-            credentials = assume_role(session, account['id'], args.role, 'SecurityAudit')
+            credentials = assume_role(
+                org_session if mgmt_account_id else session,
+                account['id'],
+                args.role,
+                'SecurityAudit'
+            )
             iam_client = boto3.client(
                 'iam',
                 aws_access_key_id=credentials['AccessKeyId'],
@@ -189,7 +297,6 @@ def main():
         except Exception as e:
             print(f"Error en cuenta {account['name']}: {e}")
 
-    # Cruzar DESPUÉS del for — fuera del try/except
     for root_finding in all_root_findings:
         root_logins = [
             e for e in cloudtrail_events
@@ -325,29 +432,52 @@ if __name__ == "__main__":
         f.write(html_content)
     print(f"Reporte HTML generado: {html_filename}")
 
-    # Servir el dashboard
-    os.chdir("output")
-    PORT = 8000
-    html_basename = html_filename.split('/')[-1]
-
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def do_GET(self):
-            if self.path == '/':
-                self.send_response(302)
-                self.send_header('Location', f'/{html_basename}')
-                self.end_headers()
-            else:
-                super().do_GET()
+    # Upload a S3 y notificación Slack (solo en entorno Fargate)
+    if os.environ.get("S3_BUCKET"):
+        from datetime import date
+        today = date.today().strftime("%Y-%m-%d")
+        s3_key = f"reports/{today}/{os.path.basename(html_filename)}"
         
-        def log_message(self, format, *args):
-            pass
+        bucket, key = upload_to_s3(html_filename, s3_key)
+        presigned_url = generate_presigned_url(bucket, key)
+        
+        high_risk_count = sum(1 for f in findings if f.get("risk_score", 0) >= 7)
+        
+        notify_slack(
+            presigned_url=presigned_url,
+            findings_count=len(findings),
+            accounts_count=len(root_findings),
+            high_risk_count=high_risk_count
+        )
+    else:
+        print("[Info] S3_BUCKET no definida — modo local, omitiendo upload y notificación")
 
-    print(f"\n{'='*50}")
-    print(f"  Auditoría completada.")
-    print(f"  Dashboard listo en: http://localhost:{PORT}")
-    print(f"  Presioná Ctrl+C para detener")
-    print(f"{'='*50}\n")
-    sys.stdout.flush()  # ← fuerza que aparezca en terminal
+    # Servir el dashboard (solo en modo local)
+    if not os.environ.get("S3_BUCKET"):
+        os.chdir("output")
+        PORT = 8000
+        html_basename = html_filename.split('/')[-1]
 
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
-        httpd.serve_forever()
+        class Handler(http.server.SimpleHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == '/':
+                    self.send_response(302)
+                    self.send_header('Location', f'/{html_basename}')
+                    self.end_headers()
+                else:
+                    super().do_GET()
+
+            def log_message(self, format, *args):
+                pass
+
+        print(f"\n{'='*50}")
+        print(f"  Auditoría completada.")
+        print(f"  Dashboard listo en: http://localhost:{PORT}")
+        print(f"  Presioná Ctrl+C para detener")
+        print(f"{'='*50}\n")
+        sys.stdout.flush()
+
+        with socketserver.TCPServer(("", PORT), Handler) as httpd:
+            httpd.serve_forever()
+    else:
+        print("\nAuditoría completada. Reporte disponible en S3.")

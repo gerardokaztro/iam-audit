@@ -1,10 +1,11 @@
 # 🔍 iam-audit
 
-> Audita IAM Users, Access Keys y cuentas root en toda una AWS Organization multicuenta — en minutos, con mínimo privilegio. Dashboard HTML interactivo incluido.
+> Audita IAM Users, Access Keys y cuentas root en toda una AWS Organization multicuenta — en minutos, con mínimo privilegio. Dashboard HTML interactivo incluido. Modo programado vía ECS Fargate con notificación a Slack.
 
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
 [![AWS](https://img.shields.io/badge/AWS-boto3-FF9900?style=flat&logo=amazonaws&logoColor=white)](https://boto3.amazonaws.com)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/gerardokaztro/iam-audit)
+[![Terraform](https://img.shields.io/badge/Terraform-1.14+-7B42BC?style=flat&logo=terraform&logoColor=white)](https://terraform.io)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 [![Author](https://img.shields.io/badge/AWS-Security%20Hero-FF9900?style=flat&logo=amazonaws&logoColor=white)](https://aws.amazon.com/developer/community/heroes/)
 
@@ -36,7 +37,40 @@ Este script las encuentra.
 
 ---
 
-## Inicio rápido
+## Modos de uso
+
+| | **Local** | **Fargate** |
+|---|---|---|
+| **Cómo corre** | Docker en tu máquina | ECS Fargate — automático |
+| **Trigger** | Manual | EventBridge — lunes 9am |
+| **Output** | `./output/` local + `localhost:8000` | S3 + Slack con presigned URL |
+| **Infraestructura** | Ninguna | Terraform en cuenta Security |
+| **Ideal para** | Auditorías puntuales | Monitoreo continuo semanal |
+
+---
+
+## Prerequisitos
+
+### Modo Local
+
+- Docker instalado
+- AWS credentials configuradas localmente (`~/.aws`)
+- Un rol de auditoría desplegado en cada cuenta miembro con permisos de lectura sobre IAM y CloudTrail
+- Un rol en la cuenta Management con `organizations:ListAccounts` y `sts:AssumeRole` hacia las cuentas hijas
+
+### Modo Fargate
+
+Todo lo anterior, más:
+
+- Terraform >= 1.14.0
+- AWS CLI con acceso admin a tu cuenta Security
+- Una Slack webhook URL — [cómo crearla](https://api.slack.com/messaging/webhooks)
+- Un bucket S3 para el Terraform state (se crea manualmente una sola vez — ver instrucciones abajo)
+- El rol `iam-audit-org-reader` en la cuenta Management (se crea manualmente una sola vez — ver instrucciones abajo)
+
+---
+
+## Inicio rápido — Modo Local
 
 ### Opción A — Docker Hub (recomendado)
 
@@ -59,7 +93,9 @@ Imagen disponible en: [hub.docker.com/r/gerardokaztro/iam-audit](https://hub.doc
 ```bash
 git clone https://github.com/gerardokaztro/iam-audit
 cd iam-audit
-docker build -t iam-audit .
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t iam-audit .
 docker run --rm \
   -v ~/.aws:/root/.aws \
   -v $(pwd)/output:/app/output \
@@ -69,6 +105,8 @@ docker run --rm \
   --role YOUR-AUDIT-ROLE
 ```
 
+> **Nota:** Si buildeas en Mac con Apple Silicon (arm64) y querés correr en Fargate, usá `--platform linux/amd64,linux/arm64` para generar una imagen multi-platform.
+
 ### Opción C — Sin Docker
 
 ```bash
@@ -77,31 +115,124 @@ python src/iam_audit.py --profile YOUR-AWS-PROFILE --role YOUR-AUDIT-ROLE
 ```
 
 Cuando el scan termina, abrí el browser en `http://localhost:8000` para ver el dashboard interactivo.
-Presiona `Ctrl+C` para detener el servidor.
+Presioná `Ctrl+C` para detener el servidor.
+
+---
+
+## Inicio rápido — Modo Fargate
+
+### Paso 1 — Crear el bucket de Terraform state (una sola vez)
+
+```bash
+# Reemplazá ACCOUNT-ID con el ID de tu cuenta Security
+aws s3api create-bucket \
+  --bucket iam-audit-tfstate-ACCOUNT-ID \
+  --profile YOUR-SECURITY-PROFILE
+
+aws s3api put-bucket-versioning \
+  --bucket iam-audit-tfstate-ACCOUNT-ID \
+  --versioning-configuration Status=Enabled \
+  --profile YOUR-SECURITY-PROFILE
+
+aws s3api put-public-access-block \
+  --bucket iam-audit-tfstate-ACCOUNT-ID \
+  --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
+  --profile YOUR-SECURITY-PROFILE
+```
+
+> **Nota:** Si tu cuenta Security está en `us-east-1`, omitir `--region` es correcto — la API de S3 tiene un comportamiento particular con esa región.
+
+### Paso 2 — Crear el rol de auditoría en la cuenta Management (una sola vez)
+
+Este rol permite que el Task Role en la cuenta Security liste las cuentas de la organización y luego asuma el rol de auditoría en cada cuenta hija.
+
+```bash
+# Reemplazá SECURITY-ACCOUNT-ID con el ID de tu cuenta Security
+aws iam create-role \
+  --role-name iam-audit-org-reader \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::SECURITY-ACCOUNT-ID:role/iam-audit-task-role"
+      },
+      "Action": "sts:AssumeRole"
+    }]
+  }' \
+  --profile YOUR-MANAGEMENT-PROFILE
+
+aws iam attach-role-policy \
+  --role-name iam-audit-org-reader \
+  --policy-arn arn:aws:iam::aws:policy/AWSOrganizationsReadOnlyAccess \
+  --profile YOUR-MANAGEMENT-PROFILE
+
+aws iam put-role-policy \
+  --role-name iam-audit-org-reader \
+  --policy-name assume-member-accounts \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::*:role/YOUR-AUDIT-ROLE-NAME"
+    }]
+  }' \
+  --profile YOUR-MANAGEMENT-PROFILE
+```
+
+### Paso 3 — Configurar y desplegar Terraform
+
+```bash
+cd infra
+cp backend.hcl.example backend.hcl
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Editá `backend.hcl` con los datos de tu bucket de state:
+
+```hcl
+bucket  = "iam-audit-tfstate-ACCOUNT-ID"
+key     = "iam-audit/terraform.tfstate"
+region  = "us-east-1"
+profile = "YOUR-SECURITY-PROFILE"
+```
+
+Editá `terraform.tfvars` con tus valores:
+
+```hcl
+aws_region              = "us-east-1"
+aws_profile             = "YOUR-SECURITY-PROFILE"
+environment             = "production"
+tfstate_bucket          = "iam-audit-tfstate-ACCOUNT-ID"
+reports_bucket_name     = "iam-audit-reports-ACCOUNT-ID"
+management_account_id   = "YOUR-MANAGEMENT-ACCOUNT-ID"
+audit_role_name         = "YOUR-AUDIT-ROLE-NAME"
+slack_webhook_url       = "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+```
+
+Desplegá:
+
+```bash
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+```
+
+La auditoría correrá automáticamente cada lunes a las 9am (Lima, UTC-5). Para disparar manualmente:
+
+```bash
+aws ecs run-task \
+  --cluster iam-audit-cluster \
+  --task-definition iam-audit \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[SUBNET-ID],securityGroups=[SG-ID],assignPublicIp=ENABLED}" \
+  --profile YOUR-SECURITY-PROFILE
+```
 
 ---
 
 ## Configuración de permisos
-
-El principio de mínimo privilegio aplica también aquí. El rol en la cuenta de management solo necesita:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "organizations:ListAccounts",
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": "sts:AssumeRole",
-      "Resource": "arn:aws:iam::*:role/NOMBRE-DEL-ROL-EN-CHILD-ACCOUNTS"
-    }
-  ]
-}
-```
 
 El rol en cada cuenta hija necesita permisos de lectura sobre IAM y CloudTrail:
 
@@ -126,13 +257,13 @@ El rol en cada cuenta hija necesita permisos de lectura sobre IAM y CloudTrail:
 }
 ```
 
-> Si usas AWS Control Tower, el rol `AWSControlTowerExecution` ya existe en todas las cuentas y podés usarlo como punto de partida.
+> Si usás AWS Control Tower, el rol `AWSControlTowerExecution` ya existe en todas las cuentas y podés usarlo como punto de partida. Verificá que su trust policy permita ser asumido desde tu cuenta Management — que es desde donde `iam-audit-org-reader` asume roles en las cuentas hijas.
 
 ---
 
 ## Output
 
-Todos los archivos se guardan en `./output/` con timestamp:
+**Modo Local** — archivos guardados en `./output/`:
 
 | Archivo | Contenido |
 |---|---|
@@ -141,21 +272,36 @@ Todos los archivos se guardan en `./output/` con timestamp:
 | `root_audit_report_TIMESTAMP.csv` | Estado de root account por cuenta |
 | `cloudtrail_events_TIMESTAMP.csv` | Eventos IAM de CloudTrail para tracking de remediación |
 
-**Campos del reporte IAM:**
+**Modo Fargate** — archivos subidos a S3:
 
-| Campo | Descripción |
+```
+s3://iam-audit-reports-ACCOUNT-ID/
+└── reports/
+    └── YYYY-MM-DD/
+        ├── iam_audit_report_TIMESTAMP.html
+        ├── iam_audit_report_TIMESTAMP.csv
+        ├── root_audit_report_TIMESTAMP.csv
+        └── cloudtrail_events_TIMESTAMP.csv
+```
+
+Los reportes se eliminan automáticamente a los 90 días (lifecycle policy). La presigned URL del dashboard HTML es válida por 48 horas y se entrega vía Slack.
+
+---
+
+## Infraestructura desplegada (Modo Fargate)
+
+Toda la infraestructura vive en la cuenta Security y se gestiona con Terraform:
+
+| Recurso | Propósito |
 |---|---|
-| `account_id` | ID de la cuenta AWS |
-| `account_name` | Nombre de la cuenta en la Organization |
-| `username` | Nombre del usuario IAM |
-| `password_status` | Acceso a consola configurado o no |
-| `password_last_used` | Última vez que usó la consola |
-| `access_key_id` | ID de la Access Key |
-| `status` | Active / Inactive |
-| `created_date` | Fecha de creación de la key |
-| `last_used_date` | Último uso de la key |
-| `service_name` | Último servicio AWS donde se usó |
-| `mfa_status` | Virtual / Hardware / None |
+| ECS Fargate Task | Corre el script de auditoría |
+| EventBridge Scheduler | Dispara la task cada lunes 9am Lima |
+| S3 Bucket | Almacena los reportes (lifecycle 90 días) |
+| Secrets Manager | Guarda el Slack webhook URL cifrado |
+| IAM Task Role | Permisos para asumir roles y escribir en S3 |
+| IAM Execution Role | Permisos para arrancar el contenedor y leer secrets |
+| CloudWatch Log Group | Logs de la task — retención 30 días |
+| Security Group | Egress only — el contenedor no expone puertos |
 
 ---
 
@@ -176,6 +322,7 @@ Este script ayuda a avanzar en controles específicos del [AWS Security Maturity
 - CloudTrail se consulta en `us-east-1` por defecto — IAM es global pero los eventos son regionales
 - Cuentas donde el rol de auditoría no esté desplegado serán omitidas con un error en consola — eso en sí mismo es un hallazgo
 - `lookup_events` retorna eventos de los últimos 90 días por limitación de la API de CloudTrail
+- La cuenta Management es omitida del audit de cuentas hijas si no tiene el rol de auditoría desplegado — comportamiento esperado
 
 ---
 
@@ -187,9 +334,11 @@ Este script ayuda a avanzar en controles específicos del [AWS Security Maturity
 - [x] Tendencia de remediación vía CloudTrail
 - [x] Detección de root account — MFA, Access Keys, último login
 - [x] Dockerización — imagen disponible en Docker Hub
-- [ ] Notificaciones Slack / Teams con card resumen
-- [ ] Ejecución programada vía ECS Fargate + EventBridge
-- [ ] Infraestructura como código con Terraform
+- [x] Notificaciones Slack con card resumen y presigned URL
+- [x] Ejecución programada vía ECS Fargate + EventBridge
+- [x] Infraestructura como código con Terraform
+- [ ] Integración con AWS Security Hub (custom findings)
+- [ ] Soporte para Microsoft Teams
 
 ---
 
@@ -198,11 +347,23 @@ Este script ayuda a avanzar en controles específicos del [AWS Security Maturity
 ```
 iam-audit/
 ├── src/
-│   ├── iam_audit.py       # Script principal
-│   └── template.html      # Template del dashboard HTML
+│   ├── iam_audit.py              # Script principal
+│   └── template.html             # Template del dashboard HTML
+├── infra/
+│   ├── main.tf                   # Orquestador — llama a todos los módulos
+│   ├── variables.tf              # Variables globales
+│   ├── outputs.tf                # Outputs globales
+│   ├── backend.hcl.example       # Template de configuración del backend
+│   ├── terraform.tfvars.example  # Template de variables
+│   └── modules/
+│       ├── s3/                   # Bucket de reportes
+│       ├── iam/                  # Task Role + Execution Role
+│       ├── ecs/                  # Cluster + Task Definition
+│       ├── secrets/              # Secrets Manager
+│       └── eventbridge/          # Scheduler semanal
 ├── examples/
 │   └── iam_audit_report_example.csv
-├── output/                # Generado en tiempo de ejecución — en .gitignore
+├── output/                       # Generado en tiempo de ejecución — en .gitignore
 ├── Dockerfile
 ├── requirements.txt
 └── README.md

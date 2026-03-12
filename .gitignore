@@ -27,3 +27,10 @@ env/
 .vscode/
 .idea/
 *.swp
+
+# Variables Terraform
+infra/.terraform/
+*.tfvars
+!*.tfvars.example
+backend.hcl
+!backend.hcl.example

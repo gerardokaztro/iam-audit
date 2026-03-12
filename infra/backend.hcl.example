@@ -1,0 +1,4 @@
+bucket  = "your-tfstate-bucket-name"
+key     = "iam-audit/terraform.tfstate"
+region  = "us-east-1"
+profile = "your-aws-profile"

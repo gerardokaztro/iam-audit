@@ -1,0 +1,10 @@
+aws_region     = "us-east-1"
+aws_profile    = "your-aws-profile"
+environment    = "sandbox"
+tfstate_bucket = "your-tfstate-bucket-name"
+```
+
+Y en el `.gitignore` del root del repo agregá:
+```
+*.tfvars
+!*.tfvars.example
