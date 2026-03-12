@@ -337,8 +337,6 @@ Este script ayuda a avanzar en controles específicos del [AWS Security Maturity
 - [x] Notificaciones Slack con card resumen y presigned URL
 - [x] Ejecución programada vía ECS Fargate + EventBridge
 - [x] Infraestructura como código con Terraform
-- [ ] Integración con AWS Security Hub (custom findings)
-- [ ] Soporte para Microsoft Teams
 
 ---
 

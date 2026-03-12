@@ -1,10 +1,8 @@
-aws_region     = "us-east-1"
-aws_profile    = "your-aws-profile"
-environment    = "sandbox"
-tfstate_bucket = "your-tfstate-bucket-name"
-```
-
-Y en el `.gitignore` del root del repo agregá:
-```
-*.tfvars
-!*.tfvars.example
+aws_region              = "us-east-1"
+aws_profile             = "YOUR-SECURITY-PROFILE"
+environment             = "production"
+tfstate_bucket          = "iam-audit-tfstate-ACCOUNT-ID"
+reports_bucket_name     = "iam-audit-reports-ACCOUNT-ID"
+management_account_id   = "YOUR-MANAGEMENT-ACCOUNT-ID"
+audit_role_name         = "YOUR-AUDIT-ROLE-NAME"
+slack_webhook_url       = "https://hooks.slack.com/services/XXX/YYY/ZZZ"
