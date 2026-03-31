@@ -35,7 +35,30 @@ jobs:
       - name: Run Semgrep
         run: |
           pip install semgrep==1.96.0
-          semgrep --config p/python src/
+          semgrep --config p/python src/ --sarif --output semgrep-results.sarif || true
+
+      - name: Upload Semgrep results to summary
+        if: always()
+        run: |
+          echo "## 🔍 SAST — Semgrep Results" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Line | Rule | Severity |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|------|----------|" >> $GITHUB_STEP_SUMMARY
+          python3 -c "
+          import json, sys
+          with open('semgrep-results.sarif') as f:
+              data = json.load(f)
+          results = data.get('runs', [{}])[0].get('results', [])
+          if not results:
+              print('| ✅ No findings | - | - | - |')
+          else:
+              for r in results:
+                  loc = r.get('locations', [{}])[0].get('physicalLocation', {})
+                  file = loc.get('artifactLocation', {}).get('uri', 'N/A')
+                  line = loc.get('region', {}).get('startLine', 'N/A')
+                  rule = r.get('ruleId', 'N/A')
+                  level = r.get('level', 'N/A')
+                  print(f'| {file} | {line} | {rule} | {level} |')
+          " >> $GITHUB_STEP_SUMMARY
 
   image_scanning:
     runs-on: ubuntu-latest
@@ -57,6 +80,15 @@ jobs:
           image: iam-audit:test
           fail-build: false
           output-format: table
+          output-file: grype-results.txt
+      
+      - name: Upload Grype results to summary
+        if: always()
+        run: |
+          echo "## 🐳 Image Scanning — Grype Results" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat grype-results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   iac_scanning:
     runs-on: ubuntu-latest
@@ -74,3 +106,11 @@ jobs:
         with:
           directory: infra/
           soft_fail: true
+          output_format: github_failed_only
+          output_file_path: checkov-results.md
+
+      - name: Upload Checkov results to summary
+        if: always()
+        run: |
+          echo "## 🏗️ IaC Scanning — Checkov Results" >> $GITHUB_STEP_SUMMARY
+          cat checkov-results.md >> $GITHUB_STEP_SUMMARY
