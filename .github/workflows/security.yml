@@ -107,7 +107,7 @@ jobs:
           directory: infra/
           soft_fail: true
           output_format: github_failed_only
-          output_file_path: checkov-results.md
+          output_file_path: /tmp/checkov-results.md
 
       - name: Upload Checkov results to summary
         if: always()
