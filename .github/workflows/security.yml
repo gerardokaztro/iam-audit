@@ -109,6 +109,14 @@ jobs:
           output_format: github_failed_only
           output_file_path: /tmp/checkov-results.md
 
+      - name: Debug Checkov output
+        if: always()
+        run: |
+          echo "Files in workspace:"
+          ls -la $GITHUB_WORKSPACE
+          echo "Files in /tmp:"
+          ls -la /tmp/*.md 2>/dev/null || echo "No md files in /tmp"
+
       - name: Upload Checkov results to summary
         if: always()
         run: |
