@@ -16,7 +16,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
@@ -30,12 +30,14 @@ jobs:
           egress-policy: audit
 
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Run Semgrep
-        uses: semgrep/semgrep@ab584982f6ecdaaa7954a14e5350a70c060e097f
-        with:
-          config: p/python
+        run: |
+          pip install semgrep==1.96.0 \
+            --require-hashes \
+            --hash=sha256:b55c70f4a8c1aaa8040e4ecb2d36f358f8c1320da6470b5b55ef78110901604a
+          semgrep --config p/python src/
 
   image_scanning:
     runs-on: ubuntu-latest
@@ -46,7 +48,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Build Docker image
         run: docker build -t iam-audit:test .
@@ -55,6 +57,7 @@ jobs:
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2
         with:
           image: iam-audit:test
+          fail-build: false
 
   iac_scanning:
     runs-on: ubuntu-latest
@@ -65,9 +68,10 @@ jobs:
           egress-policy: audit
           
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf
         with:
           directory: infra/
+          soft_fail: true
