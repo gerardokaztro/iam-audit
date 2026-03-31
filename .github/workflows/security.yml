@@ -102,20 +102,123 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Run Checkov
-        uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf
-        with:
-          directory: infra/
-          soft_fail: true
-          output_format: github_failed_only
-          output_file_path: /tmp/checkov-results.md
+        run: |
+          pip install checkov==3.2.395
+          checkov -d infra/ \
+            --soft-fail \
+            --output github_failed_only \
+            2>&1 | tee /tmp/checkov-results.txt || true
 
-      - name: Debug Checkov output
+      name: Security Pipeline
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  secrets_scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Run Semgrep
+        run: |
+          pip install semgrep==1.96.0
+          semgrep --config p/python src/ --sarif --output semgrep-results.sarif || true
+
+      - name: Upload Semgrep results to summary
         if: always()
         run: |
-          echo "Files in workspace:"
-          ls -la $GITHUB_WORKSPACE
-          echo "Files in /tmp:"
-          ls -la /tmp/*.md 2>/dev/null || echo "No md files in /tmp"
+          echo "## 🔍 SAST — Semgrep Results" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Line | Rule | Severity |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|------|----------|" >> $GITHUB_STEP_SUMMARY
+          python3 -c "
+          import json, sys
+          with open('semgrep-results.sarif') as f:
+              data = json.load(f)
+          results = data.get('runs', [{}])[0].get('results', [])
+          if not results:
+              print('| ✅ No findings | - | - | - |')
+          else:
+              for r in results:
+                  loc = r.get('locations', [{}])[0].get('physicalLocation', {})
+                  file = loc.get('artifactLocation', {}).get('uri', 'N/A')
+                  line = loc.get('region', {}).get('startLine', 'N/A')
+                  rule = r.get('ruleId', 'N/A')
+                  level = r.get('level', 'N/A')
+                  print(f'| {file} | {line} | {rule} | {level} |')
+          " >> $GITHUB_STEP_SUMMARY
+
+  image_scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Build Docker image
+        run: docker build -t iam-audit:test .
+
+      - name: Run Grype
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2
+        with:
+          image: iam-audit:test
+          fail-build: false
+          output-format: table
+          output-file: grype-results.txt
+      
+      - name: Upload Grype results to summary
+        if: always()
+        run: |
+          echo "## 🐳 Image Scanning — Grype Results" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat grype-results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  iac_scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
+        with:
+          egress-policy: audit
+          
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Run Checkov
+        run: |
+          pip install checkov==3.2.395
+          checkov -d infra/ \
+            --soft-fail \
+            --output github_failed_only \
+            2>&1 | tee /tmp/checkov-results.txt || true
 
       - name: Upload Checkov results to summary
         if: always()
