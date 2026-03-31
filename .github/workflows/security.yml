@@ -1,0 +1,73 @@
+name: Security Pipeline
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  secrets_scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep@ab584982f6ecdaaa7954a14e5350a70c060e097f
+        with:
+          config: p/python
+
+  image_scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Build Docker image
+        run: docker build -t iam-audit:test .
+
+      - name: Run Grype
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2
+        with:
+          image: iam-audit:test
+
+  iac_scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
+        with:
+          egress-policy: audit
+          
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf
+        with:
+          directory: infra/
