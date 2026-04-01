@@ -2,7 +2,7 @@
 
 > Audita IAM Users, Access Keys y cuentas root en toda una AWS Organization multicuenta — en minutos, con mínimo privilegio. Dashboard HTML interactivo incluido. Modo programado vía ECS Fargate con notificación a Slack.
 
-[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.13+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
 [![AWS](https://img.shields.io/badge/AWS-boto3-FF9900?style=flat&logo=amazonaws&logoColor=white)](https://boto3.amazonaws.com)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/gerardokaztro/iam-audit)
 [![Terraform](https://img.shields.io/badge/Terraform-1.14+-7B42BC?style=flat&logo=terraform&logoColor=white)](https://terraform.io)
@@ -75,6 +75,11 @@ Todo lo anterior, más:
 ### Opción A — Docker Hub (recomendado)
 
 Sin clonar el repo, sin instalar Python, sin instalar dependencias.
+
+> **Supply chain hardening:** Para máxima reproducibilidad, usá el digest en vez del tag `latest`:
+> ```bash
+> docker pull gerardokaztro/iam-audit@sha256:2876b73349c6a8c4847d4478a8e1f65971a6e1a3978320a2817e0ee3426e4ea4
+> ```
 
 ```bash
 docker run --rm \
@@ -337,6 +342,8 @@ Este script ayuda a avanzar en controles específicos del [AWS Security Maturity
 - [x] Notificaciones Slack con card resumen y presigned URL
 - [x] Ejecución programada vía ECS Fargate + EventBridge
 - [x] Infraestructura como código con Terraform
+- [x] Security pipeline con GitHub Actions — secrets, SAST, image scanning, IaC scanning
+- [x] Supply chain hardening — digest pinning + egress blocking con Harden-Runner
 
 ---
 
