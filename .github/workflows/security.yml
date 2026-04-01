@@ -15,11 +15,10 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >
-            github.com:443
+            *.stepsecurity.io:443
             api.github.com:443
-            prod.app-api.stepsecurity.io:443
-            pypi.org:443
-            files.pythonhosted.org:443
+            github.com:443
+            release-assets.githubusercontent.com:443
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -35,13 +34,12 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >
-            github.com:443
-            api.github.com:443
-            prod.app-api.stepsecurity.io:443
-            pypi.org:443
+            *.stepsecurity.io:443
             files.pythonhosted.org:443
-            semgrep.dev:443
+            github.com:443
             metrics.semgrep.dev:443
+            pypi.org:443
+            semgrep.dev:443
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -84,14 +82,14 @@ jobs:
           allowed-endpoints: >
             github.com:443
             api.github.com:443
-            prod.app-api.stepsecurity.io:443
+            *.stepsecurity.io:443
             pypi.org:443
             files.pythonhosted.org:443
             registry-1.docker.io:443
             production.cloudflare.docker.com:443
             auth.docker.io:443
             raw.githubusercontent.com:443
-            get.anchore.io:443
+            get.anchore.io:443  
             release-assets.githubusercontent.com:443
             grype.anchore.io:443
 
@@ -125,12 +123,12 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >
-            github.com:443
-            api.github.com:443
-            prod.app-api.stepsecurity.io:443
-            pypi.org:443
-            files.pythonhosted.org:443
+            *.stepsecurity.io:443
             api0.prismacloud.io:443
+            files.pythonhosted.org:443
+            github.com:443
+            pypi.org:443
+            www.bridgecrew.cloud:443
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
