@@ -13,7 +13,13 @@ jobs:
       - name: Harden Runner
         uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            prod.app-api.stepsecurity.io:443
+            pypi.org:443
+            files.pythonhosted.org:443
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -27,7 +33,15 @@ jobs:
       - name: Harden Runner
         uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            prod.app-api.stepsecurity.io:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            semgrep.dev
+            metrics.semgrep.dev
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -66,7 +80,20 @@ jobs:
       - name: Harden Runner
         uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            prod.app-api.stepsecurity.io:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            registry-1.docker.io
+            production.cloudflare.docker.com
+            auth.docker.io
+            raw.githubusercontent.com
+            get.anchore.io
+            release-assets.githubusercontent.com
+            grype.anchore.io
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -96,7 +123,14 @@ jobs:
       - name: Harden Runner
         uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            prod.app-api.stepsecurity.io:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            api0.prismacloud.io
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
