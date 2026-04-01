@@ -35,7 +35,7 @@ jobs:
       - name: Run Semgrep
         run: |
           pip install semgrep==1.96.0
-          semgrep --config p/python src/ --sarif --output semgrep-results.sarif || true
+          semgrep --config p/python src/ --config p/javascript --sarif --output semgrep-results.sarif || true
 
       - name: Upload Semgrep results to summary
         if: always()
