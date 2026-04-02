@@ -5,7 +5,8 @@ WORKDIR /app
 COPY requirements.txt .
 COPY src/ .
 
-RUN pip install -r requirements.txt
+RUN pip install --upgrade pip==26.0 && \ 
+    pip install -r requirements.txt
 
 ENTRYPOINT ["python3", "iam_audit.py"]
 
