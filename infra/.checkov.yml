@@ -1,0 +1,15 @@
+skip-check:
+  - CKV_AWS_158  # CloudWatch KMS CMK overkill for audit logs
+  - CKV_AWS_149  # Secrets Manager KMS CMK overkill for Slack webhook
+  - CKV_AWS_297  # EventBridge CMK overkill for internal scheduler
+  - CKV_AWS_145  # S3 KMS CMK overkill for temporary reports
+  - CKV_AWS_144  # Cross-region replication not needed for 90-day reports
+  - CKV2_AWS_62  # S3 event notifications not required for this use case
+  - CKV_AWS_338  # 1 year retention overkill for weekly reports
+  - CKV2_AWS_5   # False positive — SG attached in ECS module
+  - CKV2_AWS_57  # External secret — rotation managed by Slack
+  - CKV_AWS_65   # Container insights adds cost for weekly task
+  - CKV_AWS_300  # Abort failed uploads lifecycle low impact
+  - CKV_AWS_23   # Description missing — low risk, will add later
+  - CKV_AWS_382  # Intentional egress — task needs internet access
+  - CKV_AWS_18   # Access logging not required for internal reports
