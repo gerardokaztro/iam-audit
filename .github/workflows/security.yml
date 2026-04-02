@@ -147,7 +147,7 @@ jobs:
         run: |
           pip install checkov==3.2.395
           checkov -d infra/ \
-            --config-file infra/.checkov.yaml \
+            --config-file infra/.checkov.yml \
             --soft-fail \
             --output github_failed_only \
             2>&1 | tee /tmp/checkov-results.txt || true
